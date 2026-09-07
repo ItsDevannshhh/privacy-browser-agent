@@ -1,38 +1,70 @@
-interface ElementInfo {
+
+type ElementInfo = {
     id: string;
     tag: string;
     text: string;
     type?: string;
     placeholder?: string;
     ariaLabel?: string;
+};
+
+const elements: Record<string, HTMLElement> = {};
+let elementCounter = 0;
+
+function getElementText(element: HTMLElement): string {
+    return (element.innerText || element.textContent || "")
+        .trim()
+        .replace(/\s+/g, " ")
+        .slice(0, 200);
 }
 
-function extractDom(): ElementInfo[] {
-    const elements = document.querySelectorAll(
-        "button, a, input, textarea, select"
-    );
-
+function extractDOM(): ElementInfo[] {
     const result: ElementInfo[] = [];
 
-    elements.forEach((element, index) => {
-        const htmlElement = element as HTMLElement;
-        const input = element as HTMLInputElement;
+    const selectors = [
+        "button",
+        "a",
+        "input",
+        "textarea",
+        "select",
+        "h1",
+        "h2",
+        "h3"
+    ];
 
-        const id = `el_${index + 1}`;
+    document.querySelectorAll<HTMLElement>(selectors.join(",")).forEach((element) => {
+        const id = `el_${++elementCounter}`;
 
-        result.push({
+        elements[id] = element;
+
+        const info: ElementInfo = {
             id,
             tag: element.tagName.toLowerCase(),
-            text: htmlElement.innerText?.trim() || "",
-            type: input.type || undefined,
-            placeholder: input.placeholder || undefined,
-            ariaLabel: element.getAttribute("aria-label") || undefined,
-        });
+            text: getElementText(element),
+        };
+
+        if (element instanceof HTMLInputElement) {
+            info.type = element.type;
+            info.placeholder = element.placeholder;
+        }
+
+        if (element instanceof HTMLTextAreaElement) {
+            info.placeholder = element.placeholder;
+        }
+
+        const ariaLabel = element.getAttribute("aria-label");
+
+        if (ariaLabel) {
+            info.ariaLabel = ariaLabel;
+        }
+
+        result.push(info);
     });
 
     return result;
 }
 
-const dom = extractDom();
+const dom = extractDOM();
 
-console.log("Privacy Browser Agent DOM:", dom);
+console.log("Privacy Browser Agent content script loaded");
+console.log("Extracted DOM:", dom);
