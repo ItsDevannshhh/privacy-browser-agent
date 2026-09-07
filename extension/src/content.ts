@@ -67,4 +67,5 @@ function extractDOM(): ElementInfo[] {
 const dom = extractDOM();
 
 console.log("Privacy Browser Agent content script loaded");
-console.log("Extracted DOM:", dom);
+console.log("Extracted DOM count:", dom.length);
+console.log("Extracted DOM:", JSON.stringify(dom, null, 2));
