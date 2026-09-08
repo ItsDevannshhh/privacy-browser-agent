@@ -1,71 +1,31 @@
+/**
+ * Privacy Browser Agent — Content Script
+ *
+ * Entry point injected into every page (document_idle).
+ * Runs the local DOM perception pipeline with a test task,
+ * then logs the results to the console.
+ *
+ * No network requests. No LLM. No form values collected.
+ */
 
-type ElementInfo = {
-    id: string;
-    tag: string;
-    text: string;
-    type?: string;
-    placeholder?: string;
-    ariaLabel?: string;
-};
+import { TaskOrchestrator } from "./orchestrator/TaskOrchestrator";
 
-const elements: Record<string, HTMLElement> = {};
-let elementCounter = 0;
+// ── Temporary test task (will come from popup/sidepanel later) ──────────
 
-function getElementText(element: HTMLElement): string {
-    return (element.innerText || element.textContent || "")
-        .trim()
-        .replace(/\s+/g, " ")
-        .slice(0, 200);
-}
+const testTask = "click the Download Invoice button";
 
-function extractDOM(): ElementInfo[] {
-    const result: ElementInfo[] = [];
+// ── Run pipeline ───────────────────────────────────────────────────────
 
-    const selectors = [
-        "button",
-        "a",
-        "input",
-        "textarea",
-        "select",
-        "h1",
-        "h2",
-        "h3"
-    ];
+(async () => {
+  console.log("Privacy Browser Agent content script loaded");
 
-    document.querySelectorAll<HTMLElement>(selectors.join(",")).forEach((element) => {
-        const id = `el_${++elementCounter}`;
+  const orchestrator = new TaskOrchestrator();
+  const context = await orchestrator.getRelevantContext(testTask);
 
-        elements[id] = element;
+  // Also log raw extraction count for visibility
+  const rawCount = orchestrator.getPerception().extract().length;
 
-        const info: ElementInfo = {
-            id,
-            tag: element.tagName.toLowerCase(),
-            text: getElementText(element),
-        };
-
-        if (element instanceof HTMLInputElement) {
-            info.type = element.type;
-            info.placeholder = element.placeholder;
-        }
-
-        if (element instanceof HTMLTextAreaElement) {
-            info.placeholder = element.placeholder;
-        }
-
-        const ariaLabel = element.getAttribute("aria-label");
-
-        if (ariaLabel) {
-            info.ariaLabel = ariaLabel;
-        }
-
-        result.push(info);
-    });
-
-    return result;
-}
-
-const dom = extractDOM();
-
-console.log("Privacy Browser Agent content script loaded");
-console.log("Extracted DOM count:", dom.length);
-console.log("Extracted DOM:", JSON.stringify(dom, null, 2));
+  console.log(`DOM candidates: ${rawCount}`);
+  console.log(`Relevant candidates: ${context.candidates.length}`);
+  console.log("Selected context:", JSON.stringify(context, null, 2));
+})();
