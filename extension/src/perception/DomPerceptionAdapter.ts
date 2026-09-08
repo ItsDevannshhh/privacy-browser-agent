@@ -270,6 +270,7 @@ export class DomPerceptionAdapter {
           : undefined,
       type:
         el instanceof HTMLInputElement ? el.type : undefined,
+      autocomplete: el.getAttribute("autocomplete") ?? undefined,
       visible: isElementVisible(el),
       enabled: isElementEnabled(el),
       bbox: getBBox(el),
