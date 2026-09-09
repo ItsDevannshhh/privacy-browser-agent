@@ -24,6 +24,7 @@ export interface ElementCandidate {
   ariaLabel?: string;
   placeholder?: string;
   type?: string;
+  autocomplete?: string;
   visible: boolean;
   enabled: boolean;
   bbox: BoundingBox;

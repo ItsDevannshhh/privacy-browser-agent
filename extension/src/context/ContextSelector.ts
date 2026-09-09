@@ -46,6 +46,10 @@ const W = {
   ROLE_MATCH_DAMPED: 0.02,
   ACTION_INTENT_DAMPED: 0.01,
 
+  // Form-intent boost (structural/categorical task targeting form controls)
+  FORM_INTENT_CONTROL: 0.20,
+  FORM_INTENT_ACTION: 0.10,
+
   // Tiebreakers
   VISIBLE_BONUS: 0.01,
   ENABLED_BONUS: 0.01,
@@ -76,6 +80,22 @@ const UI_DESCRIPTOR_TERMS = new Set([
   "button", "btn", "link", "textbox", "searchbox", "input", "field", "box",
   "dropdown", "checkbox", "radio", "tab", "menu", "menuitem", "icon", "element",
 ]);
+
+// ── Structural form-intent target words ────────────────────────────────
+// These words, when combined with a TYPE verb and no specific label target,
+// indicate the user is targeting form controls as a category.
+const FORM_TARGET_WORDS = new Set([
+  "form", "fields", "details", "information", "info",
+]);
+
+// ── Form-control roles (elements targeted by form-intent) ──────────────
+const FORM_CONTROL_ROLES = new Set([
+  "textbox", "searchbox", "combobox", "spinbutton",
+  "checkbox", "radio",
+]);
+
+// ── Form-action roles (submit/action buttons related to forms) ─────────
+const FORM_ACTION_ROLES = new Set(["button"]);
 
 // ── Action-verb → intent mapping ──────────────────────────────────────
 
@@ -169,6 +189,7 @@ export class ContextSelector {
     const intent = this.detectIntent(task);
     const contentPhrase = this.extractContentPhrase(task);
     const contentTokens = this.extractContentTokens(task, contentPhrase);
+    const formIntent = this.detectFormIntent(task, intent, contentPhrase);
 
     // Score each candidate
     const scored: ScoredCandidate[] = candidates
@@ -178,7 +199,7 @@ export class ContextSelector {
         if (!c.enabled && intent !== "UNKNOWN") return false;
         return true;
       })
-      .map((c) => this.scoreCandidate(c, contentTokens, contentPhrase, intent));
+      .map((c) => this.scoreCandidate(c, contentTokens, contentPhrase, intent, formIntent));
 
     // Sort descending by score
     scored.sort((a, b) => b.relevanceScore - a.relevanceScore);
@@ -205,8 +226,6 @@ export class ContextSelector {
     }
     return "UNKNOWN";
   }
-
-  // ── Internal scoring ─────────────────────────────────────────────────
 
   /**
    * Extract the "content" portion of the task by stripping leading meta-action
@@ -275,11 +294,49 @@ export class ContextSelector {
     return tokenize(task);
   }
 
+  /**
+   * Detect whether the task is a structural "form intent" — targeting
+   * form controls as a category rather than a specific element by label.
+   *
+   * Returns true when:
+   *  1. Intent is TYPE (fill, enter, write, etc.)
+   *  2. The content phrase consists entirely of generic structural terms
+   *     ("form", "fields", "details", "information") with no specific label target.
+   *
+   * Public so it can be unit-tested independently.
+   */
+  detectFormIntent(task: string, intent: ActionIntent, contentPhrase: string): boolean {
+    // Only TYPE-intent tasks can trigger form-intent
+    if (intent !== "TYPE") return false;
+
+    // If there's no content phrase at all, not a form intent
+    if (!contentPhrase) return false;
+
+    // Tokenize the content phrase and check if ALL tokens are
+    // generic structural/form-related words (no specific label target)
+    const tokens = tokenize(contentPhrase);
+    if (tokens.length === 0) return false;
+
+    // Every content token must be a form-target word or a common qualifier
+    const FORM_QUALIFIERS = new Set(["out", "all", "available", "required", "necessary", "remaining"]);
+    for (const t of tokens) {
+      if (!FORM_TARGET_WORDS.has(t) && !FORM_QUALIFIERS.has(t)) {
+        // Found a specific content word → this is a targeted task, not form-intent
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  // ── Internal scoring ─────────────────────────────────────────────────
+
   private scoreCandidate(
     c: ElementCandidate,
     contentTokens: string[],
     contentPhrase: string,
     intent: ActionIntent,
+    formIntent: boolean,
   ): ScoredCandidate {
     let semanticScore = 0;
     let supportingScore = 0;
@@ -289,6 +346,19 @@ export class ContextSelector {
     const normText = normalizeText(c.text);
     const normAria = normalizeText(c.ariaLabel);
     const normPlaceholder = normalizeText(c.placeholder);
+
+    // ── Form-intent boost ───────────────────────────────────────────
+    // When the task is a structural form intent, boost form-control roles.
+    // This acts as semantic relevance: the user IS targeting these elements.
+    if (formIntent && c.role) {
+      if (FORM_CONTROL_ROLES.has(c.role)) {
+        semanticScore += W.FORM_INTENT_CONTROL;
+        reasons.push("form_intent_match");
+      } else if (FORM_ACTION_ROLES.has(c.role)) {
+        supportingScore += W.FORM_INTENT_ACTION;
+        reasons.push("form_intent_action");
+      }
+    }
 
     // ── Exact phrase / label match ──────────────────────────────────
     if (contentPhrase) {
